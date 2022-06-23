@@ -66,6 +66,9 @@
   - [Создание потока данных](#создание-потока-данных)
   - [Фильтрация, перебор и отображение](#фильтрация-перебор-и-отображение)
   - [Сортировка](#сортировка)
+  - [Получение подпотока и объединение потоков](#получение-подпотока-и-объединение-потоков)
+  - [Методы skip и limit](#методы-skip-и-limit)
+  - [Операции сведения](#операции-сведения)
 
 # Java Core
 
@@ -1273,6 +1276,178 @@ ____
 ```
 
 Если по каким-то причинам не подходит данный вараинт или же объекты, которые сортируются не реализуют интерфейс `Comparable`, то можно использовать другую версию `sorted()`, которая в качестве параметра принимает компаратор.
+
+[:top: Содержание](#содержание)
+
+____
+
+## Получение подпотока и объединение потоков
+
+### takeWhile
+
+Метод `takeWhile()` выбирает из потока элементы, пока они соответствуют условию. Если попадается элемент, который не соответствует условию, то метод завершает свою работу. Выбранные элементы возвращаются в виде потока.
+
+```java
+    public static void main(String[] args) { 
+        Stream<Integer> numbers = Stream.of(-3, -2, -1, 0, 1, 2, 3, -4, -5);
+        numbers.takeWhile(n -> n < 0)
+            .forEach(n -> System.out.println(n));
+    }
+```
+
+При этом несмотря на то, что в потоке больше отрицательных чисел, но метод завершает работу, как только обнаружит первое число, которое не соответствует условию. В этом и состоит отличие, например, от метода `filter()`.
+
+Чтобы в данном случае охватить все элементы, которые меньше нуля, поток следует предварительно отсортировать:
+
+```java
+    Stream<Integer> numbers = Stream.of(-3, -2, -1, 0, 1, 2, 3, -4, -5);
+    numbers.sorted().takeWhile(n -> n < 0)
+            .forEach(n -> System.out.println(n));
+```
+
+### dropWhile
+
+Метод `dropWhile()` выполняет обратную задачу - он пропускает элементы потока, которые соответствуют условию до тех пор, пока не встретит элемент, который НЕ соответствует условию:
+
+```java
+    Stream<Integer> numbers = Stream.of(-3, -2, -1, 0, 1, 2, 3, -4, -5);
+    numbers.sorted().dropWhile(n -> n < 0)
+        .forEach(n -> System.out.println(n));
+```
+
+### concat
+
+Статический метод `concat()` объединяет элементы двух потоков, возвращая объединенный поток:
+
+```java
+    public static void main(String[] args) {
+        Stream<String> people1 = Stream.of("Tom", "Bob", "Sam");
+        Stream<String> people2 = Stream.of("Alice", "Kate", "Sam");
+        Stream.concat(people1, people2).forEach(n -> System.out.println(n));
+    }
+```
+
+### distinct
+
+Метод `distinct()` возвращает только ункальные элементы в виде потока:
+
+```java
+    Stream<String> people = Stream.of("Tom", "Bob", "Sam", "Tom", "Alice", "Kate", "Sam");
+    people.distinct().forEach(p -> System.out.println(p));
+```
+
+[:top: Содержание](#содержание)
+
+____
+
+## Методы skip и limit
+
+Метод `skip(long n)` используется для пропуска `n` элементов. Этот метод возвращает новый поток, в котором пропущены первые `n` элементов.
+
+Метод `limit(long n`) применяется для выборки первых `n` элементов потоков. Этот метод также возвращает модифицированный поток, в котором не более `n` элементов.
+
+Зачастую эта пара методов используется вместе для создания эффекта постраничной навигации.
+
+```java
+    Stream<String> phoneStream = Stream.of("iPhone 6 S", "Lumia 950", "Samsung Galaxy S 6", "LG G 4", "Nexus 7");
+
+    phoneStream.skip(1)
+        .limit(2)
+        .forEach(s->System.out.println(s));
+```
+
+В данном случае метод `skip` пропускает один первый элемент, а метод `limit` выбирает два следующих элемента.
+
+Вполне может быть, что метод `skip` может принимать в качестве параметра число большее, чем количество элементов в потоке. В этом случае будут пропущены все элементы, а в результирующем потоке будет 0 элементов.
+
+И если в метод `limit` передается число, большее, чем количество элементов, то просто выбираются все элементы потока.
+
+[:top: Содержание](#содержание)
+
+____
+
+## Операции сведения
+
+Операции сведения представляют терминальные операции, которые возвращают некоторое значение - результат операции.
+
+### count
+
+Метод `count()` возвращает количество элементов в потоке данных:
+
+```java
+    public static void main(String[] args) {
+        ArrayList<String> names = new ArrayList<String>();
+        names.addAll(Arrays.asList(new String[]{"Tom", "Sam", "Bob", "Alice"}));
+        System.out.println(names.stream().count());  // 4
+        // количество элементов с длиной не больше 3 символов
+        System.out.println(names.stream().filter(n->n.length()<=3).count());  // 3
+    } 
+```
+
+### findFirst и findAny
+
+Метод `findFirst()` извлекает из потока первый элемент, а `findAny()` извлекает случайный объект из потока (нередко так же первый):
+
+```java
+    ArrayList<String> names = new ArrayList<String>();
+    names.addAll(Arrays.asList(new String[]{"Tom", "Sam", "Bob", "Alice"}));
+
+    Optional<String> first = names.stream().findFirst();
+    System.out.println(first.get());    // Tom
+
+    Optional<String> any = names.stream().findAny();
+    System.out.println(first.get());    // Tom
+```
+
+### allMatch, anyMatch, noneMatch
+
+Еще одна группа операций сведения возвращает логическое значение `true` или `false`:
+- `boolean allMatch(Predicate<? super T> predicate)`: возвращает true, если все элементы потока удовлетворяют условию в предикате
+- `boolean anyMatch(Predicate<? super T> predicate)`: возвращает true, если хоть один элемент потока удовлетворяют условию в предикате
+- `boolean noneMatch(Predicate<? super T> predicate)`: возвращает true, если ни один из элементов в потоке не удовлетворяет условию в предикате
+
+```java
+    public static void main(String[] args) {
+        ArrayList<String> names = new ArrayList<String>();
+        names.addAll(Arrays.asList(new String[]{"Tom", "Sam", "Bob", "Alice"}));
+         
+        // есть ли в потоке строка, длина которой больше 3
+        boolean any = names.stream().anyMatch(s->s.length()>3);
+        System.out.println(any);    // true
+         
+        // все ли строки имеют длину в 3 символа
+        boolean all = names.stream().allMatch(s->s.length()==3);
+        System.out.println(all);    // false
+         
+        // НЕТ ЛИ в потоке строки "Bill". Если нет, то true, если есть, то false
+        boolean none = names.stream().noneMatch(s->s=="Bill");
+        System.out.println(none);   // true
+    } 
+```
+
+### min и max
+
+Методы `min()` и `max()` возвращают соответственно минимальное и максимальное значение. Поскольку данные в потоке могут представлять различные типы, в том числе сложные классы, то в качестве параметра в эти методы передается объект интерфейса `Comparator`, который указывает, как сравнивать объекты:
+
+```java
+    Optional<T> min(Comparator<? super T> comparator)
+    Optional<T> max(Comparator<? super T> comparator)
+```
+
+Оба метода возвращают элемент потока (минимальный или максимальный), обернутый в объект `Optional`.
+
+```java
+    public static void main(String[] args) {
+         
+        ArrayList<Integer> numbers = new ArrayList<Integer>();
+        numbers.addAll(Arrays.asList(new Integer[]{1,2,3,4,5,6,7,8,9}));
+         
+        Optional<Integer> min = numbers.stream().min(Integer::compare);
+        Optional<Integer> max = numbers.stream().max(Integer::compare);
+        System.out.println(min.get());  // 1
+        System.out.println(max.get());  // 9
+    } 
+```
 
 [:top: Содержание](#содержание)
 
