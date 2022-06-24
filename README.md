@@ -69,6 +69,11 @@
   - [Получение подпотока и объединение потоков](#получение-подпотока-и-объединение-потоков)
   - [Методы skip и limit](#методы-skip-и-limit)
   - [Операции сведения](#операции-сведения)
+  - [Метод reduce](#метод-reduce)
+  - [Тип Optional](#тип-optional)
+  - [Метод collect](#метод-collect)
+  - [Группировка](#группировка)
+  - [Параллельные потоки](#параллельные-потоки)
 
 # Java Core
 
@@ -1447,6 +1452,407 @@ ____
         System.out.println(min.get());  // 1
         System.out.println(max.get());  // 9
     } 
+```
+
+[:top: Содержание](#содержание)
+
+____
+
+## Метод reduce
+
+Метод `reduce` выполняет терминальные операции сведения, возвращая некоторое значение - результат операции. Он имеет следующие формы:
+
+```java
+    Optional<T> reduce(BinaryOperator<T> accumulator)
+    T reduce(T identity, BinaryOperator<T> accumulator)
+    U reduce(U identity, BiFunction<U,? super T,U> accumulator, BinaryOperator<U> combiner)
+```
+
+Первая форма возвращает результат в виде объекта `Optional<T>`.
+
+```java
+    public static void main(String[] args) {
+        Stream<Integer> numbersStream = Stream.of(1,2,3,4,5,6);
+        Optional<Integer> result = numbersStream.reduce((x,y)->x*y);
+        System.out.println(result.get()); // 720
+    } 
+```
+
+Объект `BinaryOperator<T>` представляет функцию, которая принимает два элемента и выполняет над ними некоторую операцию, возвращая результат. При этом метод reduce сохраняет результат и затем опять же применяет к этому результату и следующему элементу в наборе бинарную операцию.
+
+Вторая версия метода `reduce()` принимает два параметра
+
+Первый параметр - `T identity` - элемент, который предоставляет начальное значение для функции из второго параметра, а также предоставляет значение по умолчанию, если поток не имеет элементов.
+
+Второй параметр - `BinaryOperator<T> accumulator`, как и первая форма метода `reduce`, представляет ассоциативную функцию, которая запускается для каждого элемента в потоке и принимает два параметра. Первый параметр представляяет промежуточный результат функции, а второй параметр - следующий элемент в потоке. Фактически код этого метода будет равноценен следующей записи:
+
+```java
+    T result = identity;
+    for (T element : this stream)
+        result = accumulator.apply(result, element)
+    return result;
+```
+
+То есть при первом вызове функция `accumulator` в качестве первого параметра принимает значение `identity`, а в качестве второго параметра - первый элемент потока. При втором вызове первым параметром служит результат первого вызова функции `accumulator`, а вторым параметром - второй элемент в потоке и так далее.
+
+```java
+    Stream<Integer> numberStream = Stream.of(-4, 3, -2, 1);
+    int identity = 1;
+    int result = numberStream.reduce(identity, (x,y)->x * y);
+    System.out.println(result);  // 24
+```
+
+[:top: Содержание](#содержание)
+
+____
+
+## Тип Optional
+
+Ряд операций сведения, такие как `min`, `max`, `reduce`, возвращают объект `Optional<T>`. Этот объект фактически обертывает результат операции. После выполнения операции с помощью метода `get()` объекта `Optional` мы можем получить его значение
+
+```java
+    public static void main(String[] args) {
+        ArrayList<Integer> numbers = new ArrayList<Integer>();
+        numbers.addAll(Arrays.asList(new Integer[]{1,2,3,4,5,6,7,8,9}));
+        Optional<Integer> min = numbers.stream().min(Integer::compare);
+        System.out.println(min.get());  // 1
+    } 
+```
+
+Если поток не содержит вообще никаких данных, то в этом случае программа выдаст исключение `java.util.NoSuchElementException`.
+
+Самой простой способ избежать подобной ситуации - это предварительная проверка наличия значения в `Optional` с помощью метода `isPresent()`. Он возврашает `true`, если значение присутствует в `Optional`, и `false`, если значение отсутствует:
+
+```java
+    ArrayList<Integer> numbers = new ArrayList<Integer>();
+    Optional<Integer> min = numbers.stream().min(Integer::compare);
+    if(min.isPresent()){
+        System.out.println(min.get());
+    }
+```
+
+### orElse
+
+Метод `orElse()` позволяет определить альтернативное значение, которое будет возвращаться, если `Optional` не получит из потока какого-нибудь значения:
+
+```java
+    // пустой список
+    ArrayList<Integer> numbers = new ArrayList<Integer>();
+    Optional<Integer> min = numbers.stream().min(Integer::compare);
+    System.out.println(min.orElse(-1)); // -1
+
+    // непустой список
+    numbers.addAll(Arrays.asList(new Integer[]{4,5,6,7,8,9}));
+    min = numbers.stream().min(Integer::compare);
+    System.out.println(min.orElse(-1)); // 4
+```
+
+### orElseGet
+
+Метод `orElseGet()` позволяет задать функцию, которая будет возвращать значение по умолчанию:
+
+```java
+    public static void main(String[] args) {
+        ArrayList<Integer> numbers = new ArrayList<Integer>();
+        Optional<Integer> min = numbers.stream().min(Integer::compare);
+        Random rnd = new Random();
+        System.out.println(min.orElseGet(()->rnd.nextInt(100)));
+    } 
+```
+
+### orElseThrow
+
+Еще один метод - `orElseThrow` позволяет сгенерировать исключение, если `Optional` не содержит значения:
+
+```java
+    ArrayList<Integer> numbers = new ArrayList<Integer>();
+    Optional<Integer> min = numbers.stream().min(Integer::compare);
+    // генеррация исключения IllegalStateException
+    System.out.println(min.orElseThrow(IllegalStateException::new));
+```
+
+### Обработка полученного значения
+
+Метод `ifPresent()` определяет действия со значением в `Optional`, если значение имеется:
+
+```java
+    ArrayList<Integer> numbers = new ArrayList<Integer>();
+    numbers.addAll(Arrays.asList(new Integer[]{4,5,6,7,8,9}));
+    Optional<Integer> min = numbers.stream().min(Integer::compare);
+    min.ifPresent(v->System.out.println(v)); // 4
+```
+
+В метод `ifPresent` передается функция, которая принимает один параметр - значение из `Optional`. В данном случае полученное минимальное число выводится на консоль. Но если бы массив `numbers` был бы пустым, и соответственно `Optional` не сдержало бы никакого значения, то никакой ошибки бы не было.
+
+Метод `ifPresentOrElse()` позволяет определить альтернативную логику на случай, если значение в `Optional` отсутствует:
+
+```java
+    ArrayList<Integer> numbers = new ArrayList<Integer>();
+    Optional<Integer> min = numbers.stream().min(Integer::compare);
+    min.ifPresentOrElse(
+         v -> System.out.println(v),
+        () -> System.out.println("Value not found")
+    );
+```
+
+В метод `ifPresentOrElse` передается две функции. Первая обрабатывает значение в `Optional`, если оно присутствует. Вторая функция представляет действия, которые выполняются, если значение в `Optional` отсутствует.
+
+[:top: Содержание](#содержание)
+
+____
+
+## Метод collect
+
+Большинство операций класса `Stream`, которые модифицируют набор данных, возвращают этот набор в виде потока. Однако бывают ситуации, когда хотелось бы получить данные не в виде потока, а в виде обычной коллекции, например, `ArrayList` или `HashSet`. И для этого у класса `Stream` определен метод `collect`. Первая версия метода принимает в качестве параметра функцию преобразования к коллекции:
+
+```java
+    <R,A> R collect(Collector<? super T,A,R> collector)
+```
+
+Параметр `R` представляет тип результата метода, параметр `Т` - тип элемента в потоке, а параметр `А` - тип промежуточных накапливаемых данных. В итоге параметр `collector` представляет функцию преобразования потока в коллекцию.
+
+Эта функция представляет объект `Collector`, который определен в пакете `java.util.stream`. Мы можем написать свою реализацию функции, однако Java уже предоставляет ряд встроенных функций, определенных в классе `Collectors`:
+
+- `toList()`: преобразование к типу List
+- `toSet()`: преобразование к типу Set
+- `toMap()`: преобразование к типу Map
+
+```java
+        List<String> phones = new ArrayList<String>();
+        Collections.addAll(phones, "iPhone 8", "HTC U12", "Huawei Nexus 6P",
+                "Samsung Galaxy S9", "LG G6", "Xiaomi MI6", "ASUS Zenfone 2", 
+                "Sony Xperia Z5", "Meizu Pro 6", "Lenovo S850");
+          
+        List<String> filteredPhones = phones.stream()
+                .filter(s->s.length()<10)
+                .collect(Collectors.toList());
+                 
+        for(String s : filteredPhones){
+            System.out.println(s);
+        }
+```
+
+```java
+    Set<String> filteredPhones = phones.stream()
+                .filter(s->s.length()<10)
+                .collect(Collectors.toSet());
+```
+
+Вторая форма метода `collect` имеет три параметра:
+
+```java
+    <R> R collect(Supplier<R> supplier, BiConsumer<R,? super T> accumulator, BiConsumer<R,R> combiner)
+```
+
+- `supplier`: создает объект коллекции
+- `accumulator`: добавляет элемент в коллекцию
+- `combiner`: бинарная функция, которая объединяет два объекта
+
+## Группировка
+
+Чтобы сгруппировать данные по какому-нибудь признаку, нам надо использовать в связке метод `collect()` объекта Stream и метод `Collectors.groupingBy()`. Допустим, у нас есть следующий класс:
+
+```java
+    class Phone{
+        private String name;
+        private String company;
+        private int price;
+    }
+```
+
+```java
+        Stream<Phone> phoneStream = Stream.of(new Phone("iPhone X", "Apple", 600), 
+            new Phone("Pixel 2", "Google", 500),
+            new Phone("iPhone 8", "Apple",450),
+            new Phone("Galaxy S9", "Samsung", 440),
+            new Phone("Galaxy S8", "Samsung", 340));
+          
+        Map<String, List<Phone>> phonesByCompany = phoneStream.collect(
+                Collectors.groupingBy(Phone::getCompany));
+          
+        for(Map.Entry<String, List<Phone>> item : phonesByCompany.entrySet()){
+              
+            System.out.println(item.getKey());
+            for(Phone phone : item.getValue()){
+                  
+                System.out.println(phone.getName());
+            }
+            System.out.println();
+        } 
+```
+
+Итак, для создания групп в метод `phoneStream.collect()` передается вызов функции `Collectors.groupingBy()`, которая с помощью выражения `Phone::getCompany` группирует объекты по компании. В итоге будет создан объект `Map`, в котором ключами являются названия компаний, а значениями - список связанных с компаниями телефонов.
+
+### Метод Collectors.partitioningBy
+
+Метод `Collectors.partitioningBy()` имеет похожее действие, только он делит элементы на группы по принципу, соответствует ли элемент определенному условию.
+
+```java
+    Map<Boolean, List<Phone>> phonesByCompany = phoneStream.collect(
+                    Collectors.partitioningBy(p->p.getCompany()=="Apple"));
+
+    for(Map.Entry<Boolean, List<Phone>> item : phonesByCompany.entrySet()){
+
+        System.out.println(item.getKey());
+        for(Phone phone : item.getValue()){
+
+            System.out.println(phone.getName());
+        }
+        System.out.println();
+    }
+```
+
+В данном случае с помощью условия `p->p.getCompany()=="Apple"` мы смотрим, принадлежит ли телефон компании Apple. Если телефон принадлежит этой компании, то он попадает в одну группу, если нет, то в другую.
+
+### Метод Coollectors.counting
+
+Метод `Collectors.counting` применяется в `Collectors.groupingBy()` для вычисления количества элементов в каждой группе:
+
+```java
+    Map<String, Long> phonesByCompany = phoneStream.collect(
+            Collectors.groupingBy(Phone::getCompany, Collectors.counting()));
+
+    for(Map.Entry<String, Long> item : phonesByCompany.entrySet()){
+
+        System.out.println(item.getKey() + " - " + item.getValue());
+    }
+```
+
+### Метод Collectors.summing
+
+Метод `Collectors.summing` применяется для подсчета суммы. В зависимости от типа данных, к которым применяется метод, он имеет следующие формы: `summingInt()`, `summingLong()`, `summingDouble()`. Применим этот метод для подсчета стоимости всех смартфонов по компаниям:
+
+```java
+    Map<String, Integer> phonesByCompany = phoneStream.collect(
+            Collectors.groupingBy(Phone::getCompany, Collectors.summingInt(Phone::getPrice)));
+
+    for(Map.Entry<String, Integer> item : phonesByCompany.entrySet()){
+
+        System.out.println(item.getKey() + " - " + item.getValue());
+    }
+```
+
+С помощью выражения `Collectors.summingInt(Phone::getPrice))` мы указываем, что для каждой компании будет вычислять совокупная цена всех ее смартфонов. И поскольку вычисляется результат - сумма для значений типа `int`, то в качестве типа возвращаемой коллекции используется тип` Map<String, Integer>`
+
+### Методы maxBy и minBy
+
+Методы `maxBy` и `minBy` применяются для подсчета минимального и максимального значения в каждой группе. В качестве параметра эти методы принимают функцию компаратора, которая нужна для сравнения значений. Например, найдем для каждой компании телефон с минимальной ценой:
+
+```java
+    Map<String, Optional<Phone>> phonesByCompany = phoneStream.collect(
+            Collectors.groupingBy(Phone::getCompany, 
+                    Collectors.minBy(Comparator.comparing(Phone::getPrice))));
+
+    for(Map.Entry<String, Optional<Phone>> item : phonesByCompany.entrySet()){
+
+        System.out.println(item.getKey() + " - " + item.getValue().get().getName());
+    }
+```
+
+В качестве возвращаемого значения операции группировки используется объект `Map<String, Optional<Phone>>`. Опять же поскольку группируем по компаниям, то ключом будет выступать строка, а значением - объект `Optional<Phone>`.
+
+### Метод summarizing
+
+Методы `summarizingInt()` / `summarizingLong()` / `summarizingDouble()` позволяют объединить в набор значения соответствующих типов:
+
+```java
+    Map<String, IntSummaryStatistics> priceSummary = phoneStream.collect(
+        Collectors.groupingBy(Phone::getCompany,
+            Collectors.summarizingInt(Phone::getPrice)));
+
+    for(Map.Entry<String, IntSummaryStatistics> item : priceSummary.entrySet()){
+
+        System.out.println(item.getKey() + " - " + item.getValue().getAverage());
+    }
+```
+
+Метод `Collectors.summarizingInt(Phone::getPrice))` создает набор, в который помещаются цены для всех телефонов каждой из групп. Данный набор инкапсулируется в объекте `IntSummaryStatistics`. Соответственно если бы мы применяли методы `summarizingLong()` или `summarizingDouble()`, то соответственно бы получали объекты `LongSummaryStatistics` или `DoubleSummaryStatistics`.
+
+У этих объектов есть ряд методов, который позволяют выполнить различные атомарные операции над набором:
+
+- `getAverage()`: возвращает среднее значение
+- `getCount()`: возвращает количество элементов в наборе
+- `getMax()`: возвращает максимальное значение
+- `getMin()`: возвращает минимальное значение
+- `getSum()`: возвращает сумму элементов
+- `accept()`: добавляет в набор новый элемент
+
+### Метод mapping
+
+Метод `mapping` позволяет дополнительно обработать данные и задать функцию отображения объектов из потока на какой-нибудь другой тип данных.
+
+```java
+    Map<String, List<String>> phonesByCompany = phoneStream.collect(
+        Collectors.groupingBy(Phone::getCompany,
+            Collectors.mapping(Phone::getName, Collectors.toList())));
+
+    for(Map.Entry<String, List<String>> item : phonesByCompany.entrySet()){
+
+        System.out.println(item.getKey());
+        for(String name : item.getValue()){
+            System.out.println(name);
+        }
+    }
+```
+
+Выражение `Collectors.mapping(Phone::getName, Collectors.toList())` указывает, что в группу будут выделятся названия смартфонов, причем группа будет представлять объект `List`.
+
+[:top: Содержание](#содержание)
+
+____
+
+## Параллельные потоки
+
+Кроме последовательных потоков ***Stream API*** поддерживает параллельные потоки. Распараллеливание потоков позволяет задействовать несколько ядер процессора (если целевая машина многоядерная) и тем самым может повысить производительность и ускорить вычисления. В то же время говорить, что применение параллельных потоков на многоядерных машинах однозначно повысит производительность - не совсем корректно. В каждом конкретном случае надо проверять и тестировать.
+
+Чтобы сделать обычный последовательный поток параллельным, надо вызвать у объекта `Stream` метод `parallel`. Кроме того, можно также использовать метод `parallelStream()` интерфейса `Collection` для создания параллельного потока из коллекции.
+
+В то же время если рабочая машина не является многоядерной, то поток будет выполняться как последовательный.
+
+```java
+        List<String> people = Arrays.asList("Tom","Bob", "Sam", "Kate", "Tim");
+ 
+        System.out.println("Последовательный поток");
+        people.stream().filter(p->p.length()==3).forEach(System.out::println);
+ 
+        System.out.println("\nПараллельный поток");
+        people.parallelStream().filter(p->p.length()==3).forEach(System.out::println);
+```
+
+В данном случае сначала для списка `people` создаем поток и выполняем над ним ряд операций в последовательном режиме. В частности, находим в списке строки, длина которых равна `3` и выводим их на консоль. В этом случае все операции с потоком будут производиться над элементами списка в том порядке, в котоом элементы идут в списке.
+
+Затем с помощью метода `people.parallelStream()` для списка создается параллельный поток. Причем применяются те же операции, однако теперь порядок, в котором над элементами списка будут производиться операции, не детерминирован.
+
+В случае с параллельным потоком вывод недетерминирован и может отличаться.
+
+Однако не все функции можно без ущерба для точности вычисления перенести с последовательных потоков на параллельные. Прежде всего такие функции должны быть без сохранения состояния и ассоциативными, то есть при выполнении слева направо давать тот же результат, что и при выполнении справа налево, как в случае с произведением чисел.
+
+### Вопросы производительности в параллельных операциях
+
+Фактически применение параллельных потоков сводится к тому, что данные в потоке будут разделены на части, каждая часть обрабатывается на отдельном ядре процессора, и в конце эти части соединяются, и над ними выполняются финальные операции. Рассмотрим некоторые критерии, которые могут повлиять на производительность в параллельных потоках:
+
+- Размер данных. Чем больше данных, тем сложнее сначала разделять данные, а потом их соединять.
+- Количество ядер процессора. Теоретически, чем больше ядер в компьютере, тем быстрее программа будет работать. Если на машине одно ядро, нет смысла применять параллельные потоки.
+- Чем проще структура данных, с которой работает поток, тем быстрее будут происходить операции. Например, данные из `ArrayList` легко использовать, так как структура данной коллекции предполагает последовательность несвязанных данных. А вот коллекция типа `LinkedList` - не лучший вариант, так как в последовательном списке все элементы связаны с предыдущими/последующими. И такие данные трудно распараллелить.
+- Над данными примитивных типов операции будут производиться быстрее, чем над объектами классов
+
+### Упорядоченность в параллельных потоках
+
+Как правило, элементы передаются в поток в том же порядке, в котором они определены в источнике данных. При работе с параллельными потоками система сохраняет порядок следования элементов. Исключение составляет метод `forEach()`, который может выводить элементы в произвольном порядке. И чтобы сохранить порядок следования, необходимо применять метод `forEachOrdered`:
+
+```java
+phones.parallelStream()
+    .sorted()
+    .forEachOrdered(s->System.out.println(s));
+```
+
+Сохранение порядка в параллельных потоках увеличивает издержки при выполнении. Но если нам порядок не важен, то мы можем отключить его сохранение и тем самым увеличить производительность, использовав метод `unordered`:
+
+```java
+phones.parallelStream()
+    .sorted()
+    .unordered()
+    .forEach(s->System.out.println(s));
 ```
 
 [:top: Содержание](#содержание)
